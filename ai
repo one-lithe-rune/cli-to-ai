@@ -1,0 +1,158 @@
+#!/usr/bin/env bash
+
+connection_file="$HOME/.ai-connection"
+
+# https://llama.meta.com/docs/model-cards-and-prompt-formats/meta-llama-3/
+function format_llama3chat {
+  request_data=$(echo "$session_data" | jq '[.[] | {role, content:("<|start_header_id|>"+.role+"<|end_header_id|>\n\n"+.content+"<|eot_id|>") }]')
+  request_data=$(echo "$request_data" | jq --arg max_tokens "$max_tokens" '{max_tokens:$max_tokens|tonumber,messages:(. + [{role:"assistant",content:"assistant"}])}')
+  echo "$request_data"
+}
+
+# https://github.com/tatsu-lab/stanford_alpaca
+function format_alpaca {
+  local request_data=$(echo "$session_data" | jq '[.[] | {role, content:((if .role=="system" then "" elif .role=="user" then "### Instruction:\n" elif .role=="input" then "### Input:\n" else "### Response:\n" end)+.content+"\n\n") }]')
+  local request_data=$(echo "$request_data" | jq --arg max_tokens "$max_tokens" '{max_tokens:$max_tokens|tonumber,messages:(. + [{role:"assistant",content:"### Response:\n"}])}')
+  echo "$request_data"
+}
+
+# https://docs.cohere.com/docs/prompting-command-r
+function format_command_r {
+  exit 1  # TODO
+}
+
+function write_connection_file {
+  rm $connection_file
+  echo "endpoint=$endpoint" > "$connection_file"
+  echo "prompt_format=$prompt_format" >> "$connection_file"
+  echo "session_file=$session_file" >> "$connection_file"
+  echo "response_tput=$response_tput" >> "$connection_file"
+  echo "role=$role" >> "$connection_file"
+  echo "max_tokens=$max_tokens" >> "$connection_file"
+  echo "api_key_var=$api_key_var" >> "$connection_file"
+  echo '' >> "$connection_file"
+}
+
+# connection defaults. Will be overriden by the connection file
+endpoint="http://localhost:5001/v1/chat/completions"
+prompt_format="llama3chat"
+session_file="$HOME/.ai-default-session.json"
+response_tput="bold"
+role="user"
+max_tokens=1024
+api_key_var="OPENAI_API_KEY"
+
+# write an connection file with the defaults if we don't have one
+if [ ! -f "$connection_file" ]; then
+  write_connection_file
+else
+# otherwise read the connection details in
+  source $connection_file
+fi
+
+# echo $api_key_var
+# echo "${!api_key_var}"
+
+# if we have a command that doesn't send to the ai server then handle it here and exit
+if [ "--clear-all" == "$1" ]; then
+  rm -f $session_file
+
+  echo ""; echo "ai session history $session_file cleared"; echo
+  exit 0
+elif [ "--clear" == "$1" ]; then
+  echo $(jq '[.[] | select(.role=="system")]' $session_file) > $session_file
+
+  echo ""; echo "ai session history $session_file cleared of non-system entries"; echo
+  exit 0
+elif [ "--role" == "$1" ]; then
+  if [ ! -z "$2" ]; then
+    role="$2";
+  fi
+  write_connection_file
+
+  echo ""; echo "using '$role' role when prompting the ai server"; echo
+  exit 0
+elif [ "--session-file" == "$1" ]; then
+  if [ ! -z "$2" ]; then session_file=$(realpath $2); fi
+  write_connection_file
+
+  echo
+  if [ -f "$session_file" ]; then
+    echo "using existing ai session history file $session_file"
+  else
+    echo "using new ai session history file $session_file"
+  fi
+  echo
+  exit 0
+elif [ "--prompt-format" == "$1" ]; then
+  if [ ! -z "$2" ]; then prompt_format="$2"; fi
+  write_connection_file
+
+  echo ""; echo "using $prompt_format ai prompt format"; echo
+  exit 0
+fi
+
+# if we have a command that does send to the ai server, process it here
+if [ "--assistant" == "$1" ]; then
+  role="assistant"
+  cmd_line_array=( "$@" )
+  cmd_line_arg=$(echo "${cmd_line_array[@]:1}")
+elif [ "--system" == "$1" ]; then
+  role="system"
+  cmd_line_array=( "$@" )
+  cmd_line_arg=$(echo "${cmd_line_array[@]:1}")
+else
+  # send everything if there is no recognised command
+  cmd_line_arg="$*"
+fi
+
+# if stdin in not interactive (e.g. piped in) then we want to use
+# that as the content to send instead of the remaing command line
+# arguments
+if [ -t 0 ]; then
+  new_content="$cmd_line_arg"
+else
+  new_content=$(cat)
+fi
+
+# read json of a previous session from a file
+if [ ! -f "$session_file" ]; then
+  session_data='[]'
+else
+  session_data=$(<$session_file)
+fi
+
+# add a new json object to the existing list, if we have new content
+if [ -n "$new_content" ]; then
+  session_data=$(echo "$session_data" | jq --arg content "$new_content" --arg role "$role" '. + [{ "role": $role, "content": $content }]' )
+fi
+
+# format request appropriately for the model
+if [[ $prompt_format = "llama3chat" ]]
+then
+  request_data="$(format_llama3chat)"
+elif [[ $prompt_format = "alpaca" ]]
+then
+  request_data="$(format_alpaca)"
+else
+  request_data="$(session_data)"
+fi
+
+response=$(curl -s -X POST -H "Content-Type: application/json" -d "$request_data" $endpoint)
+
+curl_status=$?
+if [ $curl_status -ne 0 ]; then
+  echo ""; echo "error connecting to $endpoint"; echo
+  exit $curl_status
+else
+  response=$(echo "$response" | jq -r '.choices[0].message')
+  response_content=$(echo "$response" | jq -r '.content')
+fi
+
+echo
+tput $response_tput;  echo "$response_content"; tput sgr0
+echo
+
+# add the new content to the session
+echo "$session_data" | jq --argjson new_content "$response" '. + [$new_content]' > "$session_file"
+
