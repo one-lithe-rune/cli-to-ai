@@ -1,18 +1,41 @@
 #!/usr/bin/env bash
 
+# MIT License
+
+# Copyright (c) 2024 Stefan Kapusniak (one-lithe-rune)
+
+# Permission is hereby granted, free of charge, to any person obtaining a copy of this software
+# and associated documentation files (the "Software"), to deal in the Software without restriction,
+# including without limitation the rights to use, copy, modify, merge, publish, distribute,
+# sublicense, and/or sell copies of the Software, and to permit persons to whom the Software
+# is furnished to do so, subject to the following conditions:
+
+# The above copyright notice and this permission notice shall be included in all copies or
+# substantial portions of the Software.
+
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+# BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+# DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
 connection_file="$HOME/.ai-connection"
 
 # https://llama.meta.com/docs/model-cards-and-prompt-formats/meta-llama-3/
 function format_llama3chat {
-  request_data=$(echo "$session_data" | jq '[.[] | {role, content:("<|start_header_id|>"+.role+"<|end_header_id|>\n\n"+.content+"<|eot_id|>") }]')
-  request_data=$(echo "$request_data" | jq --arg max_tokens "$max_tokens" '{max_tokens:$max_tokens|tonumber,messages:(. + [{role:"assistant",content:"assistant"}])}')
+  local request_data=$(echo "$session_data" | jq '[.[] | {role, content:("<|start_header_id|>"+.role+"<|end_header_id|>\n\n"+.content+"<|eot_id|>") }]')
+  local request_data=$(echo "$request_data" | jq --arg max_tokens "$max_tokens" '{max_tokens:$max_tokens|tonumber,messages:(. + [{role:"assistant",content:"<|start_header_id|>assistant<|end_header_id|>\n\n"}])}')
   echo "$request_data"
 }
 
 # https://github.com/tatsu-lab/stanford_alpaca
 function format_alpaca {
   local request_data=$(echo "$session_data" | jq '[.[] | {role, content:((if .role=="system" then "" elif .role=="user" then "### Instruction:\n" elif .role=="input" then "### Input:\n" else "### Response:\n" end)+.content+"\n\n") }]')
-  local request_data=$(echo "$request_data" | jq --arg max_tokens "$max_tokens" '{max_tokens:$max_tokens|tonumber,messages:(. + [{role:"assistant",content:"### Response:\n"}])}')
+  if [ "$start_new" = true ]; then
+    local request_data=$(echo "$request_data" | jq --arg max_tokens "$max_tokens" '{max_tokens:$max_tokens|tonumber,messages:(. + [{role:"assistant",content:"### Response:\n"}])}')
+  else
+    local request_data=$(echo "$request_data" | jq --arg max_tokens "$max_tokens" '{max_tokens:$max_tokens|tonumber,messages: .}')
+  fi
   echo "$request_data"
 }
 
@@ -124,7 +147,10 @@ fi
 
 # add a new json object to the existing list, if we have new content
 if [ -n "$new_content" ]; then
+  start_new=true
   session_data=$(echo "$session_data" | jq --arg content "$new_content" --arg role "$role" '. + [{ "role": $role, "content": $content }]' )
+else
+  start_new=false
 fi
 
 # format request appropriately for the model
@@ -138,7 +164,13 @@ else
   request_data="$(session_data)"
 fi
 
-response=$(curl -s -X POST -H "Content-Type: application/json" -d "$request_data" $endpoint)
+if [ -n "${!api_key_var}" ]; then
+  response=$(curl -s -X POST -H "Content-Type: application/json" -H "Authorization: Bearer ${!api_key_var}" -d "$request_data" $endpoint)
+  echo "api_key"
+else
+  response=$(curl -s -X POST -H "Content-Type: application/json" -d "$request_data" $endpoint)
+  echo "no api_key"
+fi
 
 curl_status=$?
 if [ $curl_status -ne 0 ]; then
