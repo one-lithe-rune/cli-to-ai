@@ -11,8 +11,8 @@ I wanted to be able to get responses and maintain conversations with an llm serv
 ## What's New
 
 - 2024-06-25
-  - Added `--load-connection` and `--save-connection` allowing connection setups to be loaded from and saved to files. As before any connection setup information loaded is saved to `$HOME/.ai-connection` so it persists between runs of the script.
-  - Now works against the real OpenAI chat API endpoint at https://api.openai.com/ configure using:
+  - Added `--load-connection` and `--save-connection` allowing connection setups to be loaded from and saved to files. As before any connection setup information loaded is then saved to `$HOME/.ai-connection` so it persists between runs of the script.
+  - Now works against the real OpenAI chat API cloud endpoint at https://api.openai.com/ configure using:
     - `--endpoint [uri]` to set the endpoint to send the requests to.
     - `--model [model_name]` to set the model for requests.
     - `--api-key-var [envar_name]` to set which environment variable to read an API key from.
@@ -26,7 +26,7 @@ You'll need `curl` and `jq` available somewhere on your path. And `bash` obvious
 ## Default Files Created
 
 - `$HOME/.ai-connection`: contains connection and configuration setting that are sourced into the script. Edit this to change your endpoint uri, etc.
-- `$HOME/.ai-default-session.json`: contain the conversation history.
+- `$HOME/.ai-default-session.json`: contains the conversation history.
   - Change the file being used with `ai --session-file FILENAME`
   - Clear the history in the current file with `ai --clear` (excluding any system prompts) or `ai --clear-all` (including system prompts).
 
@@ -35,7 +35,7 @@ You'll need `curl` and `jq` available somewhere on your path. And `bash` obvious
 Assuming the script is on your PATH and is executable:
 
 ```bash session
-# save and load your own connection/config values
+# save and load your connection/config values from the specified file
 $ ai --save-connection ./connection-local-my-server
 $ ai --load-connection ./connection-remote-company-server
 
@@ -53,7 +53,7 @@ $ ai quoting is safer but sometimes you can get away without doing it
 
 # use your usual shell syntax to pipe and redirect prompts and responses
 
-$ cat prompt.txt | ai > reponse.txt
+$ cat prompt.txt | ai > response.txt
 ```
 
 ## Sample Connection Setup Files in this Repo
@@ -61,16 +61,20 @@ $ cat prompt.txt | ai > reponse.txt
 These can be loaded with `ai --load-connection` (see above):
 
 - `connection-local-koboldcpp-llama3chat`: Connects to a local koboldcpp server running on its default port, suitable for any model using the Llama 3 chat prompt format.
-- `connection-local-koboldcpp-alpaca`: A local koboldcpp server running on its default port, suitable for models using the Alpaca prompt format.
-- `connection-remote-openai-gpt4o-chat`: Connects to the OpenAI chat API endpoint. You will need to have set up your OpenAI account configured for API, access and have set your `OPENAI_API_KEY` environment variable to an API key value you've created on your account.
+- `connection-local-koboldcpp-alpaca`: Connects to a local koboldcpp server running on its default port, suitable for models using the Alpaca prompt format.
+- `connection-remote-openai-gpt4o-chat`: Connects to the OpenAI chat API cloud endpoint. You will need to have set up your OpenAI account configured for API access, and have set your `OPENAI_API_KEY` environment variable to an API key value you've created on your account.
 
-Note that since I only have support fpr OpenAI compatible endpoints coded so far, the `koboldcpp` connections are against that endpoint provided by the `koboldcpp` server rather than its native `KoboldAI` one.
+Note that since I only have support for OpenAI compatible endpoints coded so far, the `koboldcpp` connections are against that endpoint provided by your `koboldcpp` server rather than its native `KoboldAI` one.
 
 ## TODO
 
 - Check that `curl` and `jq` are available, and complain if not.
 - Add --help/additional documentation.
 - Add Command-R format support.
+- Sampler settings.
+- Ability to output full conversation history to STDOUT, optionally filtered by role.
 - ~~Improved initialisation/setup (don't just dump some defaults with my usual use case to the connection dotfile).~~ (now use `--load-connection` with one of the connection files in this repo as a starting point, could still do with improvement)
+- Native KoboldAI endpoint support.
+- Llama.cpp server endpoint support.
 - Streaming? (Not sure this is possible with `curl` in a `bash` script)
 - Suck less.
