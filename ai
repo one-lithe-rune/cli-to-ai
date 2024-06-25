@@ -24,7 +24,7 @@ connection_file="$HOME/.ai-connection"
 # https://llama.meta.com/docs/model-cards-and-prompt-formats/meta-llama-3/
 function format_llama3chat {
   local request_data=$(echo "$session_data" | jq '[.[] | {role, content:("<|start_header_id|>"+.role+"<|end_header_id|>\n\n"+.content+"<|eot_id|>") }]')
-  local request_data=$(echo "$request_data" | jq --arg max_tokens "$max_tokens" '{max_tokens:$max_tokens|tonumber,messages:(. + [{role:"assistant",content:"<|start_header_id|>assistant<|end_header_id|>\n\n"}])}')
+  local request_data=$(echo "$request_data" | jq --argjson props "$request_props" '$props + {messages:(. + [{role:"assistant",content:"<|start_header_id|>assistant<|end_header_id|>\n\n"}])}')
   echo "$request_data"
 }
 
@@ -32,9 +32,9 @@ function format_llama3chat {
 function format_alpaca {
   local request_data=$(echo "$session_data" | jq '[.[] | {role, content:((if .role=="system" then "" elif .role=="user" then "### Instruction:\n" elif .role=="input" then "### Input:\n" else "### Response:\n" end)+.content+"\n\n") }]')
   if [ "$start_new" = true ]; then
-    local request_data=$(echo "$request_data" | jq --arg max_tokens "$max_tokens" '{max_tokens:$max_tokens|tonumber,messages:(. + [{role:"assistant",content:"### Response:\n"}])}')
+    local request_data=$(echo "$request_data" | jq --argjson props "$request_props" '$props + {messages:(. + [{role:"assistant",content:"### Response:\n"}])}')
   else
-    local request_data=$(echo "$request_data" | jq --arg max_tokens "$max_tokens" '{max_tokens:$max_tokens|tonumber,messages: .}')
+    local request_data=$(echo "$request_data" | jq --argjson props "$request_props" '$props + {messages: .} ')
   fi
   echo "$request_data"
 }
@@ -44,16 +44,22 @@ function format_command_r {
   exit 1  # TODO
 }
 
+function connection_details {
+  echo "endpoint=$endpoint"
+  echo "prompt_format=$prompt_format"
+  echo "session_file=$session_file"
+  echo "response_tput=$response_tput"
+  echo "role=$role"
+  echo "max_tokens=$max_tokens"
+  echo "api_key_var=$api_key_var"
+  echo "model=$model"
+  echo ""
+}
+
 function write_connection_file {
   rm $connection_file
-  echo "endpoint=$endpoint" > "$connection_file"
-  echo "prompt_format=$prompt_format" >> "$connection_file"
-  echo "session_file=$session_file" >> "$connection_file"
-  echo "response_tput=$response_tput" >> "$connection_file"
-  echo "role=$role" >> "$connection_file"
-  echo "max_tokens=$max_tokens" >> "$connection_file"
-  echo "api_key_var=$api_key_var" >> "$connection_file"
-  echo '' >> "$connection_file"
+  echo "$(connection_details)" > "$connection_file"
+  echo "" >> "$connection_file"
 }
 
 # connection defaults. Will be overriden by the connection file
@@ -64,6 +70,7 @@ response_tput="bold"
 role="user"
 max_tokens=1024
 api_key_var="OPENAI_API_KEY"
+model="gpt-4o"
 
 # write an connection file with the defaults if we don't have one
 if [ ! -f "$connection_file" ]; then
@@ -72,9 +79,6 @@ else
 # otherwise read the connection details in
   source $connection_file
 fi
-
-# echo $api_key_var
-# echo "${!api_key_var}"
 
 # if we have a command that doesn't send to the ai server then handle it here and exit
 if [ "--clear-all" == "$1" ]; then
@@ -113,6 +117,67 @@ elif [ "--prompt-format" == "$1" ]; then
 
   echo ""; echo "using $prompt_format ai prompt format"; echo
   exit 0
+elif [ "--model"  == "$1" ]; then
+  if [ ! -z "$2" ]; then model="$2"; fi
+  write_connection_file
+
+  echo ""; echo "requesting '$model' as the model used by the ai server"; echo
+  exit 0
+elif [ "--endpoint" == "$1" ]; then
+  if [ ! -z "$2" ]; then endpoint="$2"; fi
+  write_connection_file
+
+  echo ""; echo "using '$endpoint' as the ai server endpoint"; echo
+  exit 0
+elif [ "--api-key-var" == "$1" ]; then
+  if [ ! -z "$2" ]; then api_key_var="$2"; fi
+  write_connection_file
+
+  echo ""; echo "api key to send to the ai server will be read from the '$api_key_var' environment variable";
+  if [ -n "${!api_key_var}" ]; then
+    echo "Since '$api_key_var' is currently unset, you will need to set its value if the endpoint needs an api key";
+  else
+    echo "Since '$api_key_var' has a value set, that value will be sent as the api key to the endpoint";
+  fi
+  echo
+  exit 0
+elif [ "--load-connection" == "$1" ]; then
+  if [ -f $(realpath $2) ]; then
+    current_session_file="$session_file"
+    source $(realpath $2)
+    session_file="$current_session_file"
+    write_connection_file
+
+    echo ""; echo "Connection values loaded from '$(realpath $2)':"; echo
+    cat "$connection_file"
+
+    if [ -n "${!api_key_var}" ]; then
+      echo "Since '$api_key_var' is currently unset, you will need to set its value if the endpoint needs an api key";
+    else
+      echo "Since '$api_key_var' has a value set, that value will be sent as the api key to the endpoint";
+    fi
+    echo
+  else
+    echo ""; echo "File not found: $(realpath $2)"; echo
+  fi
+  exit 0
+elif [ "--save-connection" == "$1" ]; then
+  if [ ! -z "$2" ]; then
+    dest_file=$(realpath "$2")
+    path_status=$?
+    if [ $path_status -eq 0 ]; then
+      cp "$connection_file" "$dest_file"
+
+      echo ""; echo "Connection values saved to '$dest_file'"; echo
+      exit 0
+    else
+      echo ""; echo "Path to filename does not exist"; echo
+      exit 1
+    fi
+  else
+    echo ""; echo "No filename supplied"; echo
+    exit 1
+  fi
 fi
 
 # if we have a command that does send to the ai server, process it here
@@ -153,6 +218,9 @@ else
   start_new=false
 fi
 
+# build any additonal JSON properties we want to send with the request
+request_props=$(echo {} | jq --arg max_tokens "$max_tokens" --arg model "$model" '{max_tokens:($max_tokens|tonumber),"model":$model}')
+
 # format request appropriately for the model
 if [[ $prompt_format = "llama3chat" ]]
 then
@@ -161,15 +229,13 @@ elif [[ $prompt_format = "alpaca" ]]
 then
   request_data="$(format_alpaca)"
 else
-  request_data="$(session_data)"
+  request_data=$(echo "$session_data" | jq --argjson props "$request_props" '$props + {messages: .}')
 fi
 
 if [ -n "${!api_key_var}" ]; then
   response=$(curl -s -X POST -H "Content-Type: application/json" -H "Authorization: Bearer ${!api_key_var}" -d "$request_data" $endpoint)
-  echo "api_key"
 else
   response=$(curl -s -X POST -H "Content-Type: application/json" -d "$request_data" $endpoint)
-  echo "no api_key"
 fi
 
 curl_status=$?

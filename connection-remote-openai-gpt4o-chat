@@ -1,0 +1,9 @@
+endpoint=https://api.openai.com/v1/chat/completions
+prompt_format=openaichat
+session_file="$HOME/.ai-default-session.json"
+response_tput=bold
+role=user
+max_tokens=1024
+api_key_var=OPENAI_API_KEY
+model=gpt-4o
+

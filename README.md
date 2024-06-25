@@ -4,11 +4,20 @@ Provides a `bash` script named `ai` to send prompts, with previous prompt/respon
 
 This is in `bash` rather than the more LLM/ai standard `python3` as having to muck about with yet another `.venv` for a specific tool is a pain, when I'm very likely to be in a different `.venv` tailored to what I'm actually working on.
 
-Currently this is in 'Works for me, but probably not anyone else' state.
-
 ## Motivation
 
 I wanted to be able to get responses and maintain conversations with an llm server from the command line in my console window, rather than launching a standalone interactive application where I wouldn't be able to pipe in prompts and redirect responses with the usual shell commands.
+
+## What's New
+
+- 2024-06-25
+  - Added `--load-connection` and `--save-connection` allowing connection setups to be loaded from and saved to files. As before any connection setup information loaded is saved to `$HOME/.ai-connection` so it persists between runs of the script.
+  - Now works against the real OpenAI chat API endpoint at https://api.openai.com/ configure using:
+    - `--endpoint [uri]` to set the endpoint to send the requests to.
+    - `--model [model_name]` to set the model for requests.
+    - `--api-key-var [envar_name]` to set which environment variable to read an API key from.
+    - As an example, the file `connection-remote-openai-gpt4o` contains a connection configuration for the OpenAI chat API endpoint, using the GPT-4 Omni model, reading the API key from your `OPENAI_API_KEY` environment variable.
+  - Added example connection setup files for [koboldcpp](https://github.com/LostRuins/koboldcpp)/[koboldcpp-rocm](https://github.com/YellowRoseCx/koboldcpp-rocm/) and [OpenAI](https://openai.com/)
 
 ## Requirements
 
@@ -26,6 +35,10 @@ You'll need `curl` and `jq` available somewhere on your path. And `bash` obvious
 Assuming the script is on your PATH and is executable:
 
 ```bash session
+# save and load your own connection/config values
+$ ai --save-connection ./connection-local-my-server
+$ ai --load-connection ./connection-remote-company-server
+
 # set the prompt format in the connection file, currently `alpaca` and `llama3chat`
 # are recognised. Any other value effectively sets `openai` chat format.
 
@@ -41,14 +54,23 @@ $ ai quoting is safer but sometimes you can get away without doing it
 # use your usual shell syntax to pipe and redirect prompts and responses
 
 $ cat prompt.txt | ai > reponse.txt
-
 ```
+
+## Sample Connection Setup Files in this Repo
+
+These can be loaded with `ai --load-connection` (see above):
+
+- `connection-local-koboldcpp-llama3chat`: Connects to a local koboldcpp server running on its default port, suitable for any model using the Llama 3 chat prompt format.
+- `connection-local-koboldcpp-alpaca`: A local koboldcpp server running on its default port, suitable for models using the Alpaca prompt format.
+- `connection-remote-openai-gpt4o-chat`: Connects to the OpenAI chat API endpoint. You will need to have set up your OpenAI account configured for API, access and have set your `OPENAI_API_KEY` environment variable to an API key value you've created on your account.
+
+Note that since I only have support fpr OpenAI compatible endpoints coded so far, the `koboldcpp` connections are against that endpoint provided by the `koboldcpp` server rather than its native `KoboldAI` one.
+
 ## TODO
 
 - Check that `curl` and `jq` are available, and complain if not.
 - Add --help/additional documentation.
-- Make work with actual real OpenAI (I've been developing against local [koboldcpp](https://github.com/LostRuins/koboldcpp)/[koboldcpp-rocm](https://github.com/YellowRoseCx/koboldcpp-rocm/) which doesn't use a `model` field or care about api keys).
 - Add Command-R format support.
-- Improved initialisation/setup (don't just dump some defaults with my usual use case to the connection dotfile).
+- ~~Improved initialisation/setup (don't just dump some defaults with my usual use case to the connection dotfile).~~ (now use `--load-connection` with one of the connection files in this repo as a starting point, could still do with improvement)
 - Streaming? (Not sure this is possible with `curl` in a `bash` script)
 - Suck less.

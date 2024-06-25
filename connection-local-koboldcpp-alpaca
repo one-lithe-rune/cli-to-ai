@@ -1,0 +1,9 @@
+endpoint=http://localhost:5001/v1/chat/completions
+prompt_format=alpaca
+session_file="$HOME/.ai-default-session.json"
+response_tput=bold
+role=user
+max_tokens=1024
+api_key_var=OPENAI_API_KEY
+model=current
+
