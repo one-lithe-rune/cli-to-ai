@@ -6,4 +6,5 @@ role=user
 max_tokens=1024
 api_key_var=OPENAI_API_KEY
 model=current
-
+samplers="temperature,dynatemp_range,dynatemp_exponent,smoothing_factor,top_k,top_p,min_p,presence_penalty,top_a,tfs,rep_pen,rep_pen_range,rep_pen_slope,sampler_order"
+sampler_settings=""

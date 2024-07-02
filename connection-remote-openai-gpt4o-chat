@@ -6,4 +6,5 @@ role=user
 max_tokens=1024
 api_key_var=OPENAI_API_KEY
 model=gpt-4o
-
+samplers="temperature,top_p,presence_penalty"
+sampler_settings=""

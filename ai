@@ -53,6 +53,8 @@ function connection_details {
   echo "max_tokens=$max_tokens"
   echo "api_key_var=$api_key_var"
   echo "model=$model"
+  echo "samplers=$samplers"
+  echo "sampler_settings=$sampler_settings"
   echo ""
 }
 
@@ -71,6 +73,10 @@ role="user"
 max_tokens=1024
 api_key_var="OPENAI_API_KEY"
 model="gpt-4o"
+samplers="temperature dynatemp_range dynatemp_exponent \
+smoothing_factor top_k top_p min_p presence_penalty top_a \
+tfs rep_pen rep_pen_range rep_pen_slope sampler_order"
+sampler_settings=""
 
 # write an connection file with the defaults if we don't have one
 if [ ! -f "$connection_file" ]; then
@@ -79,6 +85,67 @@ else
 # otherwise read the connection details in
   source $connection_file
 fi
+
+[ "$1" = "-h" -o "$1" = "--help" ] && echo "
+  ai - send a prompt to an llm server from the command line
+
+  Usage: ai <prompt>
+         ai \"<prompt>\"
+         ai [option] <parameter>
+
+  ai is a bash script for prompting an llm server from the commandline.
+
+  Since ai is a commandline script the prompt can be piped in from another
+  tool and/or the ai response can be redirected to a file or piped into
+  another command.
+
+  When sending the prompt to the server it includes the history of the
+  current conversation. To allow this it maintains a session file of prompts
+  and responses. Which file is used for this can be switched with the
+  --session-file option, allowing you to have multiple conversation threads.
+
+  Command options:
+    Currently only one option at a time is supported.
+
+    Session:
+      --session-file [FILENAME]      specify FILENAME as the file to
+                                     use as the current conversation log
+      --clear                        clear the current conversation log
+                                     of user and assistant entries
+      --clear-all                    clear the current conversation log of
+                                     user, assistant and system entries
+
+    Prompting:
+      [PROMPT TEXT]                  sends PROMPT TEXT to the server
+      --system [PROMPT TEXT]         sends PROMPT TEXT to the server as a
+                                     system prompt
+      --assistant [PROMPT TEXT]      sends PROMPT TEXT to the server as
+                                     if it were a prior server response
+
+      Note PROMPT TEXT will be read from a pipe in preference, if text is
+      piped into the script.
+
+    Server Connection:
+      --load-connection [FILENAME]   load connection settings from FILENAME
+      --save-connection [FILENAME]   save connection settings to FILENAME
+      --endpoint [URL]               sets the endpoint URL to send requests
+      --model [MODELNAME]            llm model to request the server use when
+                                     processing the prompts
+      --prompt-format [FORMAT]       prompt format to use for the model
+                                     can be 'alpaca','llama3chat','oaichat'
+      --api-key-var [ENVAR_NAME]     use ENVAR_NAME as the environment
+                                     variable from which to read the api key
+                                     to use for server requests
+      --sampler-settings [JSONFILE]  include sampler settings specified in
+                                     JSONFILE when sending server requests
+
+      Currently only OpenAI compatible connection endpoints are supported.
+
+      For these options if no parameter is given for the option, the current
+      value will be displayed. Consult your llm server's documentation for
+      whether settings such as --model and --api-key-var are required.
+
+" && exit 0
 
 # if we have a command that doesn't send to the ai server then handle it here and exit
 if [ "--clear-all" == "$1" ]; then
@@ -178,6 +245,27 @@ elif [ "--save-connection" == "$1" ]; then
     echo ""; echo "No filename supplied"; echo
     exit 1
   fi
+elif [ "--sampler-settings" == "$1" ]; then
+  if [ ! -z "$2" ]; then
+    dest_file=$(realpath -e "$2")
+    path_status=$?
+    if [ $path_status -eq 0 ]; then
+      sampler_settings="$dest_file"
+
+      write_connection_file
+      echo ""; echo "Sampler settings from '$dest_file' will be used for this connection"; echo
+      exit 0
+    else
+      echo ""; echo "Sampler file '$dest_file' does not exist"; echo
+      exit 1
+    fi
+  else
+    sampler_settings=""
+    write_connection_file
+
+    echo ""; echo "No custom sampler settings will be used for this conenction"; echo
+    exit 0
+  fi
 fi
 
 # if we have a command that does send to the ai server, process it here
@@ -210,6 +298,13 @@ else
   session_data=$(<$session_file)
 fi
 
+# read any sampler settings file that has been set
+if [ -n "$sampler_settings" ] && [ -f "$sampler_settings" ]; then
+  request_props=$(cat "$sampler_settings" | jq "{$samplers}" )
+else
+  request_props="{}"
+fi
+
 # add a new json object to the existing list, if we have new content
 if [ -n "$new_content" ]; then
   start_new=true
@@ -219,7 +314,7 @@ else
 fi
 
 # build any additonal JSON properties we want to send with the request
-request_props=$(echo {} | jq --arg max_tokens "$max_tokens" --arg model "$model" '{max_tokens:($max_tokens|tonumber),"model":$model}')
+request_props=$(echo "$request_props" | jq --arg max_tokens "$max_tokens" --arg model "$model" '. + {max_tokens:($max_tokens|tonumber),"model":$model}')
 
 # format request appropriately for the model
 if [[ $prompt_format = "llama3chat" ]]
