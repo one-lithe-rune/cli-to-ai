@@ -1,7 +1,8 @@
 endpoint=http://localhost:5001/v1/chat/completions
 prompt_format=llama3chat
 session_file="$HOME/.ai-default-session.json"
-response_tput=bold
+response_tput="setaf 4 bold"
+prompt_tput="setaf 7 bold"
 role=user
 max_tokens=1024
 api_key_var=OPENAI_API_KEY

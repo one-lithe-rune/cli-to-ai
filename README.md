@@ -8,8 +8,20 @@ This is in `bash` rather than the more LLM/ai standard `python3` as having to mu
 
 I wanted to be able to get responses and maintain conversations with an llm server from the command line in my console window, rather than launching a standalone interactive application where I wouldn't be able to pipe in prompts and redirect responses with the usual shell commands.
 
+## Alternatives
+
+You might want to look at these as possible alternatives:
+
+* [mods](https://github.com/charmbracelet/mods) - same idea but in Go and prettier.
+* [Wave](https://github.com/wavetermdev/waveterm) - full terminal implementation, with inbuilt llm querying.
+
 ## What's New
 
+- 2024-07-09
+  - Added `--cat` listing out the whole of the current session's conversation.
+- 2024-07-02
+  - Added `--help`
+  - Added `--sampler-settings [FILENAME]`. Reads in a JSON file with sampler with the sampler settings to use. See the `sampler-settings*.json` files for examples. Since not all backends support all sampler types, connection files now support a `samplers=` line listing which json keys from a sampler file to send.
 - 2024-06-25
   - Added `--load-connection` and `--save-connection` allowing connection setups to be loaded from and saved to files. As before any connection setup information loaded is then saved to `$HOME/.ai-connection` so it persists between runs of the script.
   - Now works against the real OpenAI chat API cloud endpoint at https://api.openai.com/ configure using:
@@ -69,10 +81,9 @@ Note that since I only have support for OpenAI compatible endpoints coded so far
 ## TODO
 
 - Check that `curl` and `jq` are available, and complain if not.
-- Add --help/additional documentation.
+- ~~Add --help/additional documentation.~~ `--help` is now in, but still needs improvement
 - Add Command-R format support.
-- Sampler settings.
-- Ability to output full conversation history to STDOUT, optionally filtered by role.
+- ~~Ability to output full conversation history to STDOUT~~, optionally filtered by role.
 - ~~Improved initialisation/setup (don't just dump some defaults with my usual use case to the connection dotfile).~~ (now use `--load-connection` with one of the connection files in this repo as a starting point, could still do with improvement)
 - Native KoboldAI endpoint support.
 - Llama.cpp server endpoint support.
