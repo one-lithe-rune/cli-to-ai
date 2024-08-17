@@ -39,6 +39,14 @@ function format_alpaca {
   echo "$request_data"
 }
 
+function format_mistral {
+  local request_data=$(echo "$session_data" | jq '[.[] | {role, content:(if .role=="system" or .role=="user" then "[INST] "+.content+"[/INST]" else ""+.content+"</s>" end) }]')
+  local request_data=$(echo "$request_data" | jq --argjson props "$request_props" '$props + {messages:(.)}')
+  local request_data=$(echo "$request_data" | jq '.messages[0].content=("<s>"+.messages[0].content)')
+  echo "$request_data"
+}
+
+
 # https://docs.cohere.com/docs/prompting-command-r
 function format_command_r {
   exit 1  # TODO
@@ -48,7 +56,8 @@ function connection_details {
   echo "endpoint=$endpoint"
   echo "prompt_format=$prompt_format"
   echo "session_file=$session_file"
-  echo "response_tput=$response_tput"
+  echo "response_tput='$response_tput'"
+  echo "prompt_tput='$prompt_tput'"
   echo "role=$role"
   echo "max_tokens=$max_tokens"
   echo "api_key_var=$api_key_var"
@@ -73,7 +82,7 @@ prompt_tput="setaf 7 bold"
 role="user"
 max_tokens=1024
 api_key_var="OPENAI_API_KEY"
-model="gpt-4o"
+model="gpt-4o-mini"
 samplers="temperature dynatemp_range dynatemp_exponent \
 smoothing_factor top_k top_p min_p presence_penalty top_a \
 tfs rep_pen rep_pen_range rep_pen_slope sampler_order"
@@ -135,7 +144,8 @@ fi
       --model [MODELNAME]            llm model to request the server use when
                                      processing the prompts
       --prompt-format [FORMAT]       prompt format to use for the model
-                                     can be 'alpaca','llama3chat','oaichat'
+                                     can be 'alpaca','llama3chat','mistral',
+                                     'oaichat'
       --api-key-var [ENVAR_NAME]     use ENVAR_NAME as the environment
                                      variable from which to read the api key
                                      to use for server requests
@@ -160,6 +170,9 @@ elif [ "--clear" == "$1" ]; then
   echo $(jq '[.[] | select(.role=="system")]' $session_file) > $session_file
 
   echo ""; echo "ai session history $session_file cleared of non-system entries"; echo
+  exit 0
+elif [ "--back" == "$1" ]; then
+  echo $(cat "$session_file" | jq '.[:-2]') > $session_file
   exit 0
 elif [ "--role" == "$1" ]; then
   if [ ! -z "$2" ]; then
@@ -286,10 +299,12 @@ if [ "--assistant" == "$1" ]; then
   role="assistant"
   cmd_line_array=( "$@" )
   cmd_line_arg=$(echo "${cmd_line_array[@]:1}")
+  no_request=true
 elif [ "--system" == "$1" ]; then
   role="system"
   cmd_line_array=( "$@" )
   cmd_line_arg=$(echo "${cmd_line_array[@]:1}")
+  no_request=true
 else
   # send everything if there is no recognised command
   cmd_line_arg="$*"
@@ -326,6 +341,11 @@ else
   start_new=false
 fi
 
+if [ "$no_request" = true ]; then
+  echo "$session_data" | jq '.' > "$session_file"
+  exit 0;
+fi
+
 # build any additonal JSON properties we want to send with the request
 request_props=$(echo "$request_props" | jq --arg max_tokens "$max_tokens" --arg model "$model" '. + {max_tokens:($max_tokens|tonumber),"model":$model}')
 
@@ -336,6 +356,9 @@ then
 elif [[ $prompt_format = "alpaca" ]]
 then
   request_data="$(format_alpaca)"
+elif [[ $prompt_format = "mistral" ]]
+then
+  request_data="$(format_mistral)"
 else
   request_data=$(echo "$session_data" | jq --argjson props "$request_props" '$props + {messages: .}')
 fi
